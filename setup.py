@@ -4,7 +4,7 @@ with open('README.md', mode='r') as readme:
     README = readme.read()
 
 setup(
-    name='django-ynadex-storage',
+    name='django-yandex-storage',
     license='GNU LGPLv3',
     description='Пакет реализует хранилище на базе яндекс диска.',
     long_description=README,
