@@ -3,8 +3,10 @@ from django.conf import settings
 from yadiskapi.yadiskapi import Disk
 import warnings
 from django.utils.deprecation import RemovedInDjango20Warning
-from django.core.files import File, locks
+import requests
 
+class YandexStorageException(Exception):
+    pass
 
 class YandexStorage(Storage):
     def __init__(self, options=None):
@@ -12,33 +14,36 @@ class YandexStorage(Storage):
             options = settings.YANDEXSTORAGE_CONFIG
         self.disk = Disk(options.get('token'))
 
-    def path(self, name):
-        """
-        Returns a local filesystem path where the file can be retrieved using
-        Python's built-in open() function. Storage systems that can't be
-        accessed using open() should *not* implement this method.
-        """
-        raise NotImplementedError("This backend doesn't support absolute paths.")
+    @property
+    def _get_files(self):
+        """Возвращает список файлов в хранилище"""
+        return [item['name'] for item in self.disk.get_files()['items']]
 
     def delete(self, name):
         """
         Deletes the specified file from the storage system.
         """
-        raise NotImplementedError('subclasses of Storage must provide a delete() method')
+        self.disk.delete_resources('app:/{}'.format(name))
 
     def exists(self, name):
         """
         Returns True if a file referenced by the given name already exists in the
         storage system, or False if the name is available for a new file.
         """
-        raise NotImplementedError('subclasses of Storage must provide an exists() method')
+        return name in self._get_files
 
     def listdir(self, path):
         """
         Lists the contents of the specified path, returning a 2-tuple of lists;
         the first item being directories, the second item being files.
         """
-        raise NotImplementedError('subclasses of Storage must provide a listdir() method')
+        res = ([], [])
+        for i in self.disk.get_resources_metainfo('app:/{}'.format(path))['_embedded']['items']:
+            if i['type'] == 'dir':
+                res[0].append(i['name'])
+            else:
+                res[1].append(i['name'])
+        return res
 
     def size(self, name):
         """
@@ -88,4 +93,13 @@ class YandexStorage(Storage):
             stacklevel=2,
         )
         raise NotImplementedError('subclasses of Storage must provide a modified_time() method')
+
+    def _save(self, name, content):
+        content.open()
+        upload_path = self.disk.upload('app:/{}'.format(name))['href']
+        response = requests.put(upload_path, content.read())
+        if response.status_code not in [201, 202]:
+            raise YandexStorageException(response.status_code)
+        content.close()
+        return name
 
