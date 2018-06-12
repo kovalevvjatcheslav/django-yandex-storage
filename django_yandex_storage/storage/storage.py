@@ -4,6 +4,7 @@ from yadiskapi.yadiskapi import Disk
 import warnings
 from django.utils.deprecation import RemovedInDjango20Warning
 import requests
+from datetime import datetime
 
 class YandexStorageException(Exception):
     pass
@@ -17,7 +18,7 @@ class YandexStorage(Storage):
     @property
     def _get_files(self):
         """Возвращает список файлов в хранилище"""
-        return [item['name'] for item in self.disk.get_files()['items']]
+        return [item['name'] for item in self.disk.get_public_resources()['items']]
 
     def delete(self, name):
         """
@@ -49,14 +50,14 @@ class YandexStorage(Storage):
         """
         Returns the total size, in bytes, of the file specified by name.
         """
-        raise NotImplementedError('subclasses of Storage must provide a size() method')
+        return self.disk.get_resources_metainfo('app:/{}'.format(name))['size']
 
     def url(self, name):
         """
         Returns an absolute URL where the file's contents can be accessed
         directly by a Web browser.
         """
-        raise NotImplementedError('subclasses of Storage must provide a url() method')
+        return self.disk.get_resources_metainfo('app:/{}'.format(name))['public_url']
 
     def accessed_time(self, name):
         """
@@ -68,7 +69,9 @@ class YandexStorage(Storage):
             RemovedInDjango20Warning,
             stacklevel=2,
         )
-        raise NotImplementedError('subclasses of Storage must provide an accessed_time() method')
+        dt = datetime.strptime(self.disk.get_resources_metainfo('app:/{}'.format(name))['modified'].replace('-', '').
+                                replace(':', ''), '%Y%m%dT%H%M%S%z')
+        return dt
 
     def created_time(self, name):
         """
@@ -80,7 +83,9 @@ class YandexStorage(Storage):
             RemovedInDjango20Warning,
             stacklevel=2,
         )
-        raise NotImplementedError('subclasses of Storage must provide a created_time() method')
+        dt = datetime.strptime(self.disk.get_resources_metainfo('app:/{}'.format(name))['created'].replace('-', '').
+                               replace(':', ''), '%Y%m%dT%H%M%S%z')
+        return dt
 
     def modified_time(self, name):
         """
@@ -92,7 +97,10 @@ class YandexStorage(Storage):
             RemovedInDjango20Warning,
             stacklevel=2,
         )
-        raise NotImplementedError('subclasses of Storage must provide a modified_time() method')
+        dt = datetime.strptime(self.disk.get_resources_metainfo('app:/{}'.format(name))['modified'].replace('-', '').
+                                replace(':', ''), '%Y%m%dT%H%M%S%z')
+        return dt
+
 
     def _save(self, name, content):
         content.open()
@@ -101,5 +109,6 @@ class YandexStorage(Storage):
         if response.status_code not in [201, 202]:
             raise YandexStorageException(response.status_code)
         content.close()
+        self.disk.publish_resources('app:/{}'.format(name))
         return name
 
